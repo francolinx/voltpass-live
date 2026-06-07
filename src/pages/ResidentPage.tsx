@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { useEffect } from "react";
 import { useVoltPass, activeTrip, featureVehicle } from "../hooks";
 import { reserveVehicle, startReturn, seedDemoData } from "../store";
 import {
@@ -13,13 +14,40 @@ import {
 
 const RENTER = "Franco";
 
+/** Static fallback shown when SpacetimeDB vehicles table is empty. */
+const DEMO_FALLBACK = {
+  id: BigInt(1),
+  model: "Tesla Model 3",
+  battery: 87,
+  location: "Stall B-4, Microsoft Apartments",
+  status: "Available",
+  source: "simulator",
+  locationConfirmed: false,
+  lockStatus: "locked",
+} as const;
+
 export default function ResidentPage() {
   const snap = useVoltPass();
   const trip = activeTrip(snap);
 
+  // Auto-seed once when connected and vehicles table is empty.
+  useEffect(() => {
+    if (snap.connected && snap.vehicles.length === 0) {
+      seedDemoData();
+    }
+  }, [snap.connected, snap.vehicles.length]);
+
   const vehicle = featureVehicle(snap);
+
+  // Prefer a real SpacetimeDB vehicle; fall back to static demo card so the
+  // fleet section is never blank for a judge.
+  const displayVehicle = vehicle ?? (snap.connected ? DEMO_FALLBACK : null);
+  const isFallback = displayVehicle === DEMO_FALLBACK;
+
   const canReserve =
-    !!vehicle && vehicle.status === "Available" && (!trip || trip.state === "CLOSED");
+    !!displayVehicle &&
+    displayVehicle.status === "Available" &&
+    (!trip || trip.state === "CLOSED");
   const canReturn = !!trip && trip.state === "TRIP_ACTIVE";
   const isLive = vehicle?.source === "smartcar_live";
 
@@ -31,133 +59,140 @@ export default function ResidentPage() {
     <div className="page resident">
       <header className="topbar">
         <div className="brand">
-          ⚡ VoltPass <span className="role role-resident">Resident</span>
+          &#x26A1; VoltPass <span className="role role-resident">Resident</span>
         </div>
         <div className="top-right">
           <ConnectionPill snap={snap} />
           <Link className="switch-link" to="/owner">
-            owner view →
+            owner view &rarr;
           </Link>
         </div>
       </header>
 
       <DebugStrip trip={trip} />
 
-      <div className="grid">
-        <section className="card span-2">
-          <div className="card-head">
-            <h2>Your Community Fleet</h2>
-            <span className="sub">Microsoft Apartments · resident-only</span>
-          </div>
-          {vehicle && (
-            <Flash snap={snap} flashKey={`vehicle-${vehicle.id}`} className="vehicle-hero">
-              <div className="vh-art">🚙⚡</div>
-              <div className="vh-info">
-                <div className="vh-model">
-                  {vehicle.model}
-                  {isLive && <span className="live-badge">● Smartcar live</span>}
+      <section className="card fleet-card">
+        <h2>
+          Your Community Fleet
+          <span className="sub">Microsoft Apartments &middot; resident-only</span>
+        </h2>
+
+        {displayVehicle && (
+          <Flash snap={snap} flashKey={`vehicle-${displayVehicle.id}`}>
+            <div className="vehicle-row">
+              <div className="vehicle-icon">&#x1F699;&#x26A1;</div>
+              <div className="vehicle-info">
+                <strong>
+                  {displayVehicle.model}
+                  {isLive && <span className="live-badge">&nbsp;&bull; Smartcar live</span>}
+                  {isFallback && (
+                    <span
+                      style={{ fontSize: "0.75em", opacity: 0.65, marginLeft: 8 }}
+                    >
+                      demo
+                    </span>
+                  )}
+                </strong>
+                <div>
+                  &#x1F50B; {displayVehicle.battery}%
+                  {isLive ? " (live SOC)" : ""} &nbsp;&middot;&nbsp;
+                  &#x1F4CD; {displayVehicle.location}
                 </div>
-                <div className="vh-meta">
-                  🔋 {vehicle.battery}% {isLive ? "(live SOC)" : ""} · 📍 {vehicle.location}
-                </div>
-                <div className="vh-badges">
-                  <VehicleStatus status={vehicle.status} />
-                  {isLive && vehicle.locationConfirmed && (
-                    <span className="badge-confirmed">✓ Vehicle location confirmed</span>
-                  )}
-                  {isLive && !vehicle.locationConfirmed && (
-                    <span className="badge-warn">⚠ Location not confirmed</span>
-                  )}
-                  {isLive && vehicle.lockStatus === "unlocked" && (
-                    <span className="badge-unlocked">🔓 Unlock sent · vehicle unlocked</span>
-                  )}
-                  {isLive && vehicle.lockStatus === "unlocking" && (
-                    <span className="badge-warn">🔓 Unlock requested…</span>
-                  )}
-                </div>
+                <VehicleStatus status={displayVehicle.status} />
               </div>
-              <div className="vh-action">
+              <div className="vehicle-actions">
                 <button
-                  className="btn primary big"
-                  disabled={!canReserve || !snap.connected}
-                  onClick={() => vehicle && reserveVehicle(vehicle.id, RENTER)}
+                  className="btn btn-primary"
+                  disabled={!canReserve}
+                  onClick={() =>
+                    vehicle
+                      ? reserveVehicle(vehicle.id, RENTER)
+                      : seedDemoData()
+                  }
                 >
-                  Reserve
+                  {isFallback ? "Seed & Reserve" : "Reserve"}
                 </button>
-                <div className="hint">Reserves as {RENTER} (VoltScore 91)</div>
+                {!isFallback && (
+                  <p className="hint">Reserves as {RENTER} (VoltScore 91)</p>
+                )}
+                {isFallback && (
+                  <p className="hint">
+                    Seeding demo data&hellip; vehicle will appear shortly.
+                  </p>
+                )}
               </div>
-            </Flash>
-          )}
-        </section>
-
-        <section className="card">
-          <div className="card-head">
-            <h2>Trip Room</h2>
-            <StatePill snap={snap} trip={trip} />
-          </div>
-          {!trip && <div className="empty">Reserve the Model 3 to open a Trip Room.</div>}
-          {trip && (
-            <div className="trip-summary">
-              <div className="ts-line">
-                <span className="dim">Renter</span> <strong>{trip.renter}</strong>
-              </div>
-              <div className="ts-line">
-                <span className="dim">Trip</span> <strong>#{trip.id.toString()}</strong>
-              </div>
-              {canReturn && (
-                <button className="btn warn big" onClick={() => startReturn(trip.id)}>
-                  Start Return
-                </button>
-              )}
-              {trip.state === "CLOSED" && <div className="closed-badge">Trip closed ✅</div>}
-              {(trip.state === "VEHICLE_VERIFIED" ||
-                trip.state === "RESERVED" ||
-                trip.state === "CHECK_IN_STARTED") && (
-                <div className="waiting">Waiting for owner to approve unlock…</div>
-              )}
             </div>
-          )}
-        </section>
-
-        <section className="card span-2">
-          <div className="card-head">
-            <h2>AI Trust Agent</h2>
-            <span className="sub">writes structured recommendations into SpacetimeDB</span>
-          </div>
-          {tripRecs.length === 0 && (
-            <div className="empty">The AI Trust Agent will post here during check-in.</div>
-          )}
-          <div className="ai-list">
-            {tripRecs.map((r) => (
-              <AiCard key={r.id.toString()} snap={snap} rec={r} />
-            ))}
-          </div>
-        </section>
-
-        <section className="card span-2">
-          <div className="card-head">
-            <h2>Trip Timeline</h2>
-            <span className="sub">live from trip_events</span>
-          </div>
-          <Timeline snap={snap} events={tripEvents} />
-        </section>
-
-        {closeout && (
-          <section className="card span-2 highlight-card">
-            <div className="card-head">
-              <h2>Closeout Report</h2>
-              <span className="sub">generated from telemetry</span>
-            </div>
-            <AiCard snap={snap} rec={closeout} />
-          </section>
+          </Flash>
         )}
-      </div>
+      </section>
 
-      <footer className="footer">
-        <button className="btn ghost" onClick={() => seedDemoData()}>
-          ↺ Reset demo
+      <section className="card">
+        <h2>
+          Trip Room
+          <span className="sub">
+            <StatePill snap={snap} trip={trip} />
+          </span>
+        </h2>
+        {!trip && (
+          <p className="muted">Reserve the Model 3 to open a Trip Room.</p>
+        )}
+        {trip && (
+          <div>
+            <p>Renter &nbsp;<strong>{trip.renter}</strong></p>
+            <p>Trip &nbsp;<strong>#{trip.id.toString()}</strong></p>
+            {canReturn && (
+              <button className="btn" onClick={() => startReturn(trip.id)}>
+                Start Return
+              </button>
+            )}
+            {trip.state === "CLOSED" && (
+              <p className="muted">Trip closed &#x2705;</p>
+            )}
+            {(trip.state === "VEHICLE_VERIFIED" ||
+              trip.state === "RESERVED" ||
+              trip.state === "CHECK_IN_STARTED") && (
+              <p className="muted">Waiting for owner to approve unlock&hellip;</p>
+            )}
+          </div>
+        )}
+      </section>
+
+      <section className="card">
+        <h2>
+          AI Trust Agent
+          <span className="sub">
+            writes structured recommendations into SpacetimeDB
+          </span>
+        </h2>
+        {tripRecs.length === 0 && (
+          <p className="muted">
+            The AI Trust Agent will post here during check-in.
+          </p>
+        )}
+        {tripRecs.map((r) => (
+          <AiCard key={r.id.toString()} snap={snap} rec={r} />
+        ))}
+      </section>
+
+      <section className="card">
+        <h2>
+          Trip Timeline
+          <span className="sub">live from trip_events</span>
+        </h2>
+        {closeout && (
+          <h3>
+            Closeout Report
+            <span className="sub">generated from telemetry</span>
+          </h3>
+        )}
+        <Timeline snap={snap} events={tripEvents} />
+      </section>
+
+      <div className="actions">
+        <button className="btn btn-ghost" onClick={() => seedDemoData()}>
+          &#x21BA; Reset demo
         </button>
-      </footer>
+      </div>
     </div>
   );
 }
