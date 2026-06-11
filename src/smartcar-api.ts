@@ -44,7 +44,7 @@ async function guardJson(r: Response, label: string): Promise<Response> {
   if (!r.ok) {
     const ct = r.headers.get('content-type') ?? '';
     if (!ct.includes('application/json')) {
-      // Render free tier returns HTML splash/503 while waking up
+      // Render backend returns HTML splash/503 while waking up
       throw new Error(
         `Render backend waking up (${r.status}) — refresh in 30 seconds.`,
       );

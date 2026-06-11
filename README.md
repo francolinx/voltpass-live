@@ -1,14 +1,14 @@
 # VoltPass
 
-### Real-time trust OS for resident-only EV sharing — built on SpacetimeDB.
+### Dispute-ready evidence layer for EV rental hosts — built on SpacetimeDB.
 
-VoltPass turns every shared-EV rental into a live **Trip Room**: one authoritative shared state on SpacetimeDB, shared by the renter, the fleet owner, the vehicle's telemetry stream, and an AI Trust Agent. It is not a Turo clone. It is the missing trust, telemetry, and evidence layer for EV sharing inside high-trust communities — apartment buildings, campuses, and resident-only fleets.
+VoltPass turns every shared-EV rental into a live **Trip Room**: one authoritative shared state on SpacetimeDB, shared by the renter, the fleet owner, the vehicle's telemetry stream, and an AI Trust Agent. It is not a Turo clone. It is the missing trust, telemetry, and evidence layer that EV rental hosts need — structured trip evidence, real-time shared state, and AI-powered closeout reports that are ready to resolve disputes before they start. Cars are the lab; resident-only apartment fleets are a later B2B2C wedge.
 
 ---
 
 ## For Judges (60-second version)
 
-- **Live app:** https://voltpass-live.vercel.app  ·  **Repo:** `<GITHUB_URL>`  ·  **SpacetimeDB:** database `voltpass` on Maincloud (`wss://maincloud.spacetimedb.com`)
+- **Live app:** https://voltpass-live.vercel.app  ·  **Repo:** https://github.com/francolinx/voltpass-live  ·  **SpacetimeDB:** database `voltpass` on Maincloud (`wss://maincloud.spacetimedb.com`)
 - **Tracks:** Main Challenge · Best Web App · Best Use of LLMs · Best Student Team
 - **Do this:** open `/resident` and `/owner` in two browser windows, side by side. In `/resident`, reserve the Tesla Model 3.
 - **Watch this:** `/owner` updates **instantly, with no refresh** — that is a SpacetimeDB subscription firing on shared state. Then the trip walks the state machine (reserve → check-in → verify → unlock → active → return → AI review → closed), the AI Trust Agent writes structured recommendation rows into the *same* live stream, and the trip closes cleanly.
@@ -20,16 +20,15 @@ VoltPass turns every shared-EV rental into a live **Trip Room**: one authoritati
 
 > The core SpacetimeDB demo requires **no Smartcar connection and no login**. The optional real-Tesla telemetry pull uses a Render-hosted backend that sleeps — if you want to see it, open `https://voltpass-smartcar.onrender.com/api/smartcar/health` first to wake it.
 
-<!-- TODO: embed a 10–15s GIF of the two-window live sync here. It is the single highest-impact visual in this README. -->
-<!-- ![VoltPass live sync: reserve in /resident, /owner updates instantly](docs/voltpass-sync.gif) -->
+
 
 ---
 
 ## Why VoltPass exists
 
-Peer-to-peer EV sharing is not mainly a demand problem. It is a **trust and evidence problem**. Owners worry about dents, late returns, battery abuse, unlocked vehicles, parking mistakes, and disputes they can't prove. Renters want fast access without the friction and fees of a traditional marketplace.
+Peer-to-peer EV sharing is not mainly a demand problem. It is a **trust and evidence problem**. Hosts worry about dents, late returns, battery abuse, unlocked vehicles, parking mistakes, and disputes they can't prove. Renters want fast access without the friction and fees of a traditional marketplace.
 
-High-trust communities are the right place to start: residents are known, repeat users who already share infrastructure like parking and chargers. Instead of building another marketplace, VoltPass builds the layer marketplaces skip — real-time shared state, telemetry evidence, AI recommendations, and an auditable closeout trail. The long-term asset is not the rentals; it is an **underwriting-grade trust dataset** for community fleets.
+VoltPass builds the layer that marketplaces skip — real-time shared state, telemetry evidence, AI recommendations, and an auditable closeout trail that gives hosts dispute-ready evidence packets. The long-term dataset from structured trip closeouts is designed to eventually support underwriting and insurance workflows, but today the product focuses on evidence collection and trust. Resident-only apartment fleets are a natural later wedge: residents are known, repeat users who already share infrastructure like parking and chargers.
 
 ---
 
@@ -134,7 +133,7 @@ Most hackathon AI features are chat boxes. The VoltPass agent is part of the sta
 
 **How it runs:** the AI Trust Agent is a **client** of SpacetimeDB, not a reducer (reducers are sandboxed and cannot make external calls). It subscribes to trip and telemetry state, and when a trip enters `AI_REVIEWING` it reads the actual `vehicle_snapshots` and `trip_events` rows, generates a closeout, and writes a structured row back into `agent_recommendations` via the `generate_closeout` reducer.
 
-- **Closeout report** — generated from the real telemetry rows by `<MODEL — e.g. Claude>`, with a deterministic hardcoded fallback so the demo never depends on an external API.
+- **Closeout report** — generated by the AI Trust Agent, with a deterministic fallback so the demo never depends on an external model call.
 - **Unlock recommendation** — deterministic templated output for speed.
 
 Because the agent's output is a row in the same real-time stream as human and telemetry actions, it is **visible to both owner and resident, auditable, tied to a reducer-driven transition, and reusable** for dispute review and underwriting.
@@ -156,17 +155,21 @@ Closeout report:
 
 SpacetimeDB is the center of the app. Smartcar is a **real-world input that flows into the shared state** — proof of domain depth, not the headline, and never required for the core demo.
 
-VoltPass includes a Node/Express Smartcar connector that, in testing, authenticated to a real Tesla account and retrieved live telemetry from a primary **Model X** — state of charge, range, GPS, lock status, and odometer. For demo reliability the live Trip Room defaults to a **simulator-backed vehicle connector that mirrors Smartcar/Tesla telemetry events**, because Render free services sleep and vehicle APIs can rate-limit.
+VoltPass includes a Node/Express Smartcar connector that, in testing, authenticated to a real Tesla account and retrieved live telemetry from a primary **Model X** — state of charge, range, GPS, lock status, and odometer. For demo reliability the live Trip Room defaults to a **simulator-backed vehicle connector that mirrors Smartcar/Tesla telemetry events**, because vehicle APIs can rate-limit. The Render backend is deployed as a paid service, but Smartcar OAuth tokens are currently stored in memory — a redeploy or restart may require re-authentication.
+
+**Backend:** `https://voltpass-smartcar.onrender.com` (hosted on Render)
 
 **Backend routes:** `GET /api/smartcar/health`, `/auth-url`, `/callback`, `/vehicles`; `POST /api/smartcar/snapshot`, `/unlock`.
 
-**Fleet roles** (so the demo never routes around an unavailable car):
+**Smartcar-connected fleet** (real Teslas, accessed via Smartcar API — separate from the SpacetimeDB seed vehicles shown in the demo):
 
 | Vehicle | Role |
 | --- | --- |
 | Model X — Primary | Live demo Tesla |
 | Darks8ar — Model S | Backup |
 | Shadeywave | Repair / not used in demo |
+
+> **Note:** The SpacetimeDB seed data (Model 3, Model Y, Model S in the `/resident` and `/owner` views) represents the demo community fleet and runs on the simulator by default. To inject real telemetry, connect a Smartcar-linked Tesla from the owner panel and pull a live snapshot.
 
 Vehicle IDs and Smartcar secrets live in environment variables; no secret is committed.
 
@@ -181,7 +184,7 @@ Vehicle IDs and Smartcar secrets live in environment variables; no secret is com
 | Real-time renter/owner sync | **Live** through SpacetimeDB subscriptions |
 | Trip state machine | **Live** through reducers |
 | AI Trust Agent rows (unlock + closeout) | **Live** — written into `agent_recommendations` |
-| Smartcar backend | Deployed on Render (sleeps when idle) |
+| Smartcar backend | **Deployed** on Render (paid); OAuth tokens in memory — restart requires re-auth |
 | Real Tesla telemetry | **Verified in testing** with a real Model X; live pull available on request |
 | Trip driving telemetry | **Simulated** for reliable demo flow |
 | Vehicle unlock | Backend route exists; not required for the judging demo |
@@ -231,7 +234,7 @@ Vehicle IDs and Smartcar secrets live in environment variables; no secret is com
 >
 > This Smartcar panel connects to a real Tesla Model X for SOC, GPS, lock, and odometer. If the vehicle API sleeps or rate-limits, VoltPass falls back to simulator telemetry so the Trip Room never breaks.
 >
-> The long-term value is an underwriting-grade trust dataset for apartment buildings, campuses, and resident-only fleets."
+> The long-term value is a structured trip-evidence dataset that hosts can use for dispute resolution today, and that can grow into underwriting and insurance workflows over time."
 
 ---
 
@@ -306,7 +309,7 @@ To demo the public Smartcar pull: open `/api/smartcar/health` to wake Render, an
 
 ## Team
 
-`<TEAM NAME>` — `<MEMBERS>`. `<All members are currently enrolled students at … / graduated … 2026>` (for the Best Student Team track).
+Built by Franco / Francolinjo Plathottathil for the SpacetimeDB Launchpad Hackathon.
 
 ---
 
